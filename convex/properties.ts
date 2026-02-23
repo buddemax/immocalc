@@ -11,6 +11,11 @@ const propertyArgs = {
   propertyType: propertyFields.propertyType,
   regionKey: propertyFields.regionKey,
   microLocationScore: propertyFields.microLocationScore,
+  microLocationSource: propertyFields.microLocationSource,
+  microLocationUpdatedAt: propertyFields.microLocationUpdatedAt,
+  microLocationConfidence: propertyFields.microLocationConfidence,
+  microLocationBreakdown: propertyFields.microLocationBreakdown,
+  microLocationLastRunId: propertyFields.microLocationLastRunId,
   livingArea: propertyFields.livingArea,
   landArea: propertyFields.landArea,
   parkingSpaces: propertyFields.parkingSpaces,
@@ -103,6 +108,11 @@ export const create = mutation({
       propertyType: args.propertyType ?? "apartment",
       regionKey: args.regionKey ?? "DE-BE",
       microLocationScore: args.microLocationScore ?? 0.65,
+      microLocationSource: args.microLocationSource ?? "default",
+      microLocationUpdatedAt: args.microLocationUpdatedAt ?? "",
+      microLocationConfidence: args.microLocationConfidence ?? 0,
+      microLocationBreakdown: args.microLocationBreakdown,
+      microLocationLastRunId: args.microLocationLastRunId,
       landArea: args.landArea ?? 0,
       yearBuilt: args.yearBuilt ?? 1995,
       remainingUsefulLife: args.remainingUsefulLife ?? 50,
@@ -204,30 +214,35 @@ export const byId = query({
 export const upsertValuationInputs = mutation({
   args: {
     id: v.id("properties"),
-    valuationDate: propertyFields.valuationDate,
-    propertyType: propertyFields.propertyType,
-    regionKey: propertyFields.regionKey,
-    microLocationScore: propertyFields.microLocationScore,
-    landArea: propertyFields.landArea,
-    yearBuilt: propertyFields.yearBuilt,
-    modernizationYear: propertyFields.modernizationYear,
-    remainingUsefulLife: propertyFields.remainingUsefulLife,
-    energyClass: propertyFields.energyClass,
-    heatingType: propertyFields.heatingType,
-    co2CostSplitLandlord: propertyFields.co2CostSplitLandlord,
-    rentLevelClass: propertyFields.rentLevelClass,
-    vacancyMicroRisk: propertyFields.vacancyMicroRisk,
-    latitude: propertyFields.latitude,
-    longitude: propertyFields.longitude,
-    geoConfidence: propertyFields.geoConfidence,
-    geoResolvedAt: propertyFields.geoResolvedAt,
-    adminCountryCode: propertyFields.adminCountryCode,
-    adminState: propertyFields.adminState,
-    adminCounty: propertyFields.adminCounty,
-    adminCity: propertyFields.adminCity,
-    osmPlaceId: propertyFields.osmPlaceId,
-    displayName: propertyFields.displayName,
-    boundaryGeoJson: propertyFields.boundaryGeoJson,
+    valuationDate: v.optional(propertyFields.valuationDate),
+    propertyType: v.optional(propertyFields.propertyType),
+    regionKey: v.optional(propertyFields.regionKey),
+    microLocationScore: v.optional(propertyFields.microLocationScore),
+    microLocationSource: v.optional(propertyFields.microLocationSource),
+    microLocationUpdatedAt: v.optional(propertyFields.microLocationUpdatedAt),
+    microLocationConfidence: v.optional(propertyFields.microLocationConfidence),
+    microLocationBreakdown: v.optional(propertyFields.microLocationBreakdown),
+    microLocationLastRunId: v.optional(propertyFields.microLocationLastRunId),
+    landArea: v.optional(propertyFields.landArea),
+    yearBuilt: v.optional(propertyFields.yearBuilt),
+    modernizationYear: v.optional(propertyFields.modernizationYear),
+    remainingUsefulLife: v.optional(propertyFields.remainingUsefulLife),
+    energyClass: v.optional(propertyFields.energyClass),
+    heatingType: v.optional(propertyFields.heatingType),
+    co2CostSplitLandlord: v.optional(propertyFields.co2CostSplitLandlord),
+    rentLevelClass: v.optional(propertyFields.rentLevelClass),
+    vacancyMicroRisk: v.optional(propertyFields.vacancyMicroRisk),
+    latitude: v.optional(propertyFields.latitude),
+    longitude: v.optional(propertyFields.longitude),
+    geoConfidence: v.optional(propertyFields.geoConfidence),
+    geoResolvedAt: v.optional(propertyFields.geoResolvedAt),
+    adminCountryCode: v.optional(propertyFields.adminCountryCode),
+    adminState: v.optional(propertyFields.adminState),
+    adminCounty: v.optional(propertyFields.adminCounty),
+    adminCity: v.optional(propertyFields.adminCity),
+    osmPlaceId: v.optional(propertyFields.osmPlaceId),
+    displayName: v.optional(propertyFields.displayName),
+    boundaryGeoJson: v.optional(propertyFields.boundaryGeoJson),
   },
   handler: async (ctx, args) => {
     const identity = await requireIdentity(ctx);
@@ -239,6 +254,10 @@ export const upsertValuationInputs = mutation({
 
     const { id, ...patch } = args;
     const updates = Object.fromEntries(Object.entries(patch).filter(([, value]) => value !== undefined));
+    if ("microLocationScore" in updates) {
+      updates.microLocationSource = "manual";
+      updates.microLocationUpdatedAt = new Date().toISOString();
+    }
     await ctx.db.patch(id, updates);
     return id;
   },
@@ -263,6 +282,9 @@ export const migrateValuationDefaults = mutation({
       if (!property.propertyType) patch.propertyType = "apartment";
       if (!property.regionKey) patch.regionKey = "DE-BE";
       if (typeof property.microLocationScore !== "number") patch.microLocationScore = 0.65;
+      if (!property.microLocationSource) patch.microLocationSource = "default";
+      if (typeof property.microLocationConfidence !== "number") patch.microLocationConfidence = 0;
+      if (!property.microLocationUpdatedAt) patch.microLocationUpdatedAt = "";
       if (typeof property.landArea !== "number") patch.landArea = 0;
       if (typeof property.yearBuilt !== "number") patch.yearBuilt = 1995;
       if (typeof property.remainingUsefulLife !== "number") patch.remainingUsefulLife = 50;

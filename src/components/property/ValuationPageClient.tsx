@@ -23,6 +23,23 @@ type Metric =
   | "distance_transit_m"
   | "distance_center_m";
 
+type MicroLocationRun = {
+  _id: string;
+  runAt: string;
+  status: "success" | "error";
+  result?: {
+    gesamtScore: number;
+    scoreOepnv: number;
+    scoreEinkauf: number;
+    scoreBildung: number;
+    scoreFreizeit: number;
+    kurzbegruendung: string;
+    confidence: number;
+  };
+  errorMessage?: string;
+  durationMs?: number;
+};
+
 const CONVEX_MISSING_FUNCTION_TEXT = "Could not find public function";
 
 function isMissingPublicFunctionError(error: unknown): boolean {
@@ -37,15 +54,18 @@ function getSafeErrorMessage(error: unknown, fallback: string): string {
     return fallback;
   }
 
-  if (isMissingPublicFunctionError(error)) {
-    return "BORIS ist im Backend noch nicht aktiv. Bitte Convex mit `npx convex dev` starten oder mit `npx convex deploy` deployen.";
-  }
-
   if (error.message.includes("Unauthorized")) {
     return "Bitte erneut einloggen. Die Aktion war nicht autorisiert.";
   }
 
-  return fallback;
+  return error.message || fallback;
+}
+
+function toScoreScale(normalizedScore?: number): number {
+  if (typeof normalizedScore !== "number" || Number.isNaN(normalizedScore)) {
+    return 6.5;
+  }
+  return Math.max(1, Math.min(10, Number((normalizedScore * 10).toFixed(1))));
 }
 
 export function ValuationPageClient({ propertyId }: { propertyId: string }) {
@@ -60,8 +80,16 @@ export function ValuationPageClient({ propertyId }: { propertyId: string }) {
       syncLandValue: unknown;
       listProviderStatus: unknown;
     };
+    microlocation: {
+      runAutoScore: unknown;
+      listRuns: unknown;
+      setManualScore: unknown;
+    };
   };
+
   const listProviderStatusRef = useMemo(() => apiUnsafe.boris.listProviderStatus as never, [apiUnsafe]);
+  const listMicroRunsRef = useMemo(() => apiUnsafe.microlocation.listRuns as never, [apiUnsafe]);
+
   const [asOfDate, setAsOfDate] = useState(new Date().toISOString().slice(0, 10));
   const [scenarioId, setScenarioId] = useState<ScenarioId>("base");
   const [metric, setMetric] = useState<Metric>("market_rent_per_sqm");
@@ -86,6 +114,15 @@ export function ValuationPageClient({ propertyId }: { propertyId: string }) {
   >(undefined);
   const [providerStatusError, setProviderStatusError] = useState<string>("");
 
+  const [manualMicroScore, setManualMicroScore] = useState(6.5);
+  const [manualMicroReason, setManualMicroReason] = useState("");
+  const [microBusy, setMicroBusy] = useState(false);
+  const [microFeedback, setMicroFeedback] = useState("");
+  const [microError, setMicroError] = useState("");
+  const [microRuns, setMicroRuns] = useState<MicroLocationRun[] | undefined>(undefined);
+  const [microRunsError, setMicroRunsError] = useState("");
+  const [microRunsRefresh, setMicroRunsRefresh] = useState(0);
+
   const property = useQuery(api.properties.byId as never, {
     id: propertyId as never,
   }) as
@@ -95,6 +132,17 @@ export function ValuationPageClient({ propertyId }: { propertyId: string }) {
         propertyType?: "apartment" | "multi_family" | "single_family";
         regionKey?: string;
         microLocationScore?: number;
+        microLocationSource?: "default" | "manual" | "auto";
+        microLocationUpdatedAt?: string;
+        microLocationConfidence?: number;
+        microLocationBreakdown?: {
+          scoreOepnv: number;
+          scoreEinkauf: number;
+          scoreBildung: number;
+          scoreFreizeit: number;
+          gesamtScore: number;
+          kurzbegruendung: string;
+        };
         landArea?: number;
         yearBuilt?: number;
         remainingUsefulLife?: number;
@@ -176,10 +224,26 @@ export function ValuationPageClient({ propertyId }: { propertyId: string }) {
     confidence: number;
     sampleSize: number;
   }>;
+  const runAutoMicroScoreAction = useAction(apiUnsafe.microlocation.runAutoScore as never) as unknown as (args: unknown) => Promise<{
+    runId: string;
+    result: {
+      gesamtScore: number;
+      confidence: number;
+      kurzbegruendung: string;
+    };
+  }>;
+  const setManualMicroScoreMutation = useMutation(apiUnsafe.microlocation.setManualScore as never) as unknown as (
+    args: unknown,
+  ) => Promise<unknown>;
 
   const [updatingInputs, setUpdatingInputs] = useState(false);
 
   const primaryValue = useMemo(() => suite?.ertragswert.value ?? 0, [suite]);
+  const displayMicroScore = property?.microLocationBreakdown?.gesamtScore ?? toScoreScale(property?.microLocationScore);
+
+  useEffect(() => {
+    setManualMicroScore(toScoreScale(property?.microLocationScore));
+  }, [property?.microLocationScore]);
 
   useEffect(() => {
     let active = true;
@@ -220,6 +284,37 @@ export function ValuationPageClient({ propertyId }: { propertyId: string }) {
     };
   }, [convex, listProviderStatusRef]);
 
+  useEffect(() => {
+    let active = true;
+    setMicroRunsError("");
+
+    convex
+      .query(listMicroRunsRef, {
+        propertyId: propertyId as never,
+      })
+      .then((result) => {
+        if (!active) {
+          return;
+        }
+        setMicroRuns((result as MicroLocationRun[] | undefined) ?? []);
+      })
+      .catch((error) => {
+        if (!active) {
+          return;
+        }
+        setMicroRuns([]);
+        setMicroRunsError(
+          isMissingPublicFunctionError(error)
+            ? "Mikrolage-Run-Historie ist noch nicht aktiv (Convex-Funktion nicht deployt)."
+            : "Mikrolage-Run-Historie konnte nicht geladen werden.",
+        );
+      });
+
+    return () => {
+      active = false;
+    };
+  }, [convex, listMicroRunsRef, microRunsRefresh, propertyId]);
+
   if (property === undefined || !suite || !snapshots || !runs) {
     return <div className="card">Lade Bewertung...</div>;
   }
@@ -259,7 +354,7 @@ export function ValuationPageClient({ propertyId }: { propertyId: string }) {
         `Koordinate gesetzt: ${formatNumber(result.point.lat, 5)}, ${formatNumber(result.point.lon, 5)} (Conf: ${formatNumber(result.confidence, 2)})`,
       );
     } catch (error) {
-      setGeoFeedback(error instanceof Error ? error.message : "Geocoding fehlgeschlagen");
+      setGeoFeedback(getSafeErrorMessage(error, "Geocoding fehlgeschlagen"));
     } finally {
       setGeoBusy(false);
     }
@@ -272,7 +367,7 @@ export function ValuationPageClient({ propertyId }: { propertyId: string }) {
       await geoBoundaryAction({ propertyId: propertyId as never });
       setGeoFeedback("Boundary erfolgreich aktualisiert.");
     } catch (error) {
-      setGeoFeedback(error instanceof Error ? error.message : "Boundary-Update fehlgeschlagen");
+      setGeoFeedback(getSafeErrorMessage(error, "Boundary-Update fehlgeschlagen"));
     } finally {
       setGeoBusy(false);
     }
@@ -286,7 +381,7 @@ export function ValuationPageClient({ propertyId }: { propertyId: string }) {
       const counts = result.map((item) => `${item.key}:${item.count1km ?? 0}`).join(", ");
       setGeoFeedback(`POI-Insights aktualisiert (${counts}).`);
     } catch (error) {
-      setGeoFeedback(error instanceof Error ? error.message : "POI-Update fehlgeschlagen");
+      setGeoFeedback(getSafeErrorMessage(error, "POI-Update fehlgeschlagen"));
     } finally {
       setGeoBusy(false);
     }
@@ -358,6 +453,69 @@ export function ValuationPageClient({ propertyId }: { propertyId: string }) {
     } finally {
       setBorisBusy(false);
     }
+  };
+
+  const handleAutoMicroLocation = async () => {
+    setMicroBusy(true);
+    setMicroFeedback("");
+    setMicroError("");
+    try {
+      const response = await runAutoMicroScoreAction({
+        propertyId: propertyId as never,
+      });
+      setMicroFeedback(
+        `Automatische Bewertung gespeichert: ${formatNumber(response.result.gesamtScore, 1)}/10 (Conf: ${formatNumber(response.result.confidence, 2)}).`,
+      );
+      setMicroRunsRefresh((current) => current + 1);
+    } catch (error) {
+      if (isMissingPublicFunctionError(error)) {
+        setMicroError("Mikrolage-Backend ist noch nicht aktiv. Bitte Convex mit `npx convex dev` starten oder deployen.");
+      } else {
+        setMicroError(
+          getSafeErrorMessage(
+            error,
+            "Bewertung konnte nicht durchgeführt werden. Du kannst mit dem Default-Wert weiterrechnen oder manuell setzen.",
+          ),
+        );
+      }
+    } finally {
+      setMicroBusy(false);
+    }
+  };
+
+  const handleManualMicroLocation = async () => {
+    const score = Number(manualMicroScore);
+    if (!Number.isFinite(score) || score < 1 || score > 10) {
+      setMicroError("Bitte einen manuellen Mikrolage-Score zwischen 1 und 10 eingeben.");
+      return;
+    }
+
+    setMicroBusy(true);
+    setMicroFeedback("");
+    setMicroError("");
+    try {
+      await setManualMicroScoreMutation({
+        propertyId: propertyId as never,
+        score,
+        reason: manualMicroReason.trim() || undefined,
+      });
+      setMicroFeedback(`Manueller Score gespeichert: ${formatNumber(score, 1)}/10.`);
+      setMicroRunsRefresh((current) => current + 1);
+    } catch (error) {
+      if (isMissingPublicFunctionError(error)) {
+        setMicroError("Manuelle Speicherung ist noch nicht aktiv. Bitte Convex-Funktionen deployen.");
+      } else {
+        setMicroError(getSafeErrorMessage(error, "Manueller Mikrolage-Score konnte nicht gespeichert werden."));
+      }
+    } finally {
+      setMicroBusy(false);
+    }
+  };
+
+  const sourceLabelMap: Record<"default" | "manual" | "auto", string> = {
+    default: "Default",
+    manual: "Manuell",
+    auto: "Automatisch",
   };
 
   return (
@@ -441,17 +599,62 @@ export function ValuationPageClient({ propertyId }: { propertyId: string }) {
 
         <section className="card space-y-3">
           <h2 className="text-base font-semibold">Bewertungsinputs</h2>
-          <NumberInput
-            label="Mikrolage-Score"
-            value={property.microLocationScore ?? 0.65}
-            onChange={async (next) => {
-              setUpdatingInputs(true);
-              await upsertValuationInputs({ id: propertyId as never, microLocationScore: next });
-              setUpdatingInputs(false);
-            }}
-            step={0.01}
-            helpText={HELP_TEXTS.micro_location_score.text}
-          />
+
+          <div className="space-y-2 rounded-md border border-stone-200 bg-stone-50 p-3 text-sm">
+            <p className="flex items-center gap-1 font-semibold text-stone-800">
+              Mikrolage gesamt: {formatNumber(displayMicroScore, 1)}/10
+              <InfoTooltip text={HELP_TEXTS.micro_location_auto.text} />
+            </p>
+            <p className="flex items-center gap-1 text-stone-700">
+              Quelle: {sourceLabelMap[property.microLocationSource ?? "default"]}
+              <InfoTooltip text={HELP_TEXTS.micro_location_source.text} />
+            </p>
+            <p className="text-stone-700">
+              Aktualisiert: {property.microLocationUpdatedAt ? new Date(property.microLocationUpdatedAt).toLocaleString("de-DE") : "-"}
+            </p>
+            <p className="text-stone-700">Confidence: {formatNumber(property.microLocationConfidence ?? 0, 2)}</p>
+            {property.microLocationBreakdown ? (
+              <div className="grid gap-1 text-xs text-stone-700 md:grid-cols-2">
+                <p>ÖPNV: {formatNumber(property.microLocationBreakdown.scoreOepnv, 1)}</p>
+                <p>Einkauf: {formatNumber(property.microLocationBreakdown.scoreEinkauf, 1)}</p>
+                <p>Bildung: {formatNumber(property.microLocationBreakdown.scoreBildung, 1)}</p>
+                <p>Freizeit: {formatNumber(property.microLocationBreakdown.scoreFreizeit, 1)}</p>
+                <p className="md:col-span-2">Hinweis: {property.microLocationBreakdown.kurzbegruendung}</p>
+              </div>
+            ) : null}
+          </div>
+
+          <div className="grid gap-2">
+            <button className="button-primary" type="button" onClick={handleAutoMicroLocation} disabled={microBusy}>
+              Mikrolage automatisch bewerten
+            </button>
+            <NumberInput
+              label="Manueller Mikrolage-Score"
+              value={manualMicroScore}
+              onChange={setManualMicroScore}
+              min={1}
+              max={10}
+              step={0.1}
+              unit="/10"
+              helpText={HELP_TEXTS.micro_location_score.text}
+            />
+            <label>
+              <span className="label">Begründung (optional)</span>
+              <input
+                className="input"
+                value={manualMicroReason}
+                onChange={(event) => setManualMicroReason(event.target.value)}
+                placeholder="z. B. Eigene Standortkenntnis"
+              />
+            </label>
+            <button className="button-secondary" type="button" onClick={handleManualMicroLocation} disabled={microBusy}>
+              Manuellen Score speichern
+            </button>
+          </div>
+
+          {microFeedback ? <p className="text-sm text-emerald-800">{microFeedback}</p> : null}
+          {microError ? <p className="text-sm text-amber-800">{microError}</p> : null}
+
           <NumberInput
             label="Grundstücksfläche"
             value={property.landArea ?? 0}
@@ -483,6 +686,49 @@ export function ValuationPageClient({ propertyId }: { propertyId: string }) {
           <p className="text-xs text-stone-600">{updatingInputs ? "Speichert..." : "Änderungen werden sofort gespeichert."}</p>
         </section>
       </div>
+
+      <section className="card space-y-3">
+        <h2 className="text-base font-semibold">Mikrolage-Run-Historie</h2>
+
+        {microRunsError ? <p className="text-sm text-amber-800">{microRunsError}</p> : null}
+
+        <div className="overflow-auto">
+          <table className="table">
+            <thead>
+              <tr>
+                <th>Zeitpunkt</th>
+                <th>Status</th>
+                <th>Score</th>
+                <th>Confidence</th>
+                <th>Dauer</th>
+                <th>Hinweis</th>
+              </tr>
+            </thead>
+            <tbody>
+              {microRuns === undefined ? (
+                <tr>
+                  <td colSpan={6}>Lade Mikrolage-Runs...</td>
+                </tr>
+              ) : microRuns.length === 0 ? (
+                <tr>
+                  <td colSpan={6}>Noch keine Mikrolage-Runs vorhanden.</td>
+                </tr>
+              ) : (
+                microRuns.map((run) => (
+                  <tr key={run._id}>
+                    <td>{new Date(run.runAt).toLocaleString("de-DE")}</td>
+                    <td>{run.status}</td>
+                    <td>{run.result ? `${formatNumber(run.result.gesamtScore, 1)}/10` : "-"}</td>
+                    <td>{run.result ? formatNumber(run.result.confidence, 2) : "-"}</td>
+                    <td>{typeof run.durationMs === "number" ? `${formatNumber(run.durationMs, 0)} ms` : "-"}</td>
+                    <td>{run.status === "error" ? run.errorMessage || "Fehlgeschlagen" : run.result?.kurzbegruendung || "-"}</td>
+                  </tr>
+                ))
+              )}
+            </tbody>
+          </table>
+        </div>
+      </section>
 
       <section className="card space-y-3">
         <h2 className="text-base font-semibold">Standortdaten (Geo/BORIS)</h2>

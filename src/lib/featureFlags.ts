@@ -15,7 +15,8 @@ export type FeatureKey =
   | "market_data_import"
   | "scenario_analysis"
   | "valuation_report"
-  | "geo_boris_v1";
+  | "geo_boris_v1"
+  | "micro_location_auto_v1";
 
 const FREE_FEATURES: FeatureKey[] = [];
 const PRO_FEATURES: FeatureKey[] = [
@@ -34,6 +35,7 @@ const PRO_FEATURES: FeatureKey[] = [
   "scenario_analysis",
   "valuation_report",
   "geo_boris_v1",
+  "micro_location_auto_v1",
 ];
 
 export function isFeatureEnabled(planTier: PlanTier, feature: FeatureKey): boolean {

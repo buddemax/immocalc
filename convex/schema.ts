@@ -37,6 +37,23 @@ const energyClass = v.union(
 );
 const heatingType = v.union(v.literal("district"), v.literal("gas"), v.literal("oil"), v.literal("heatpump"), v.literal("other"));
 const rentLevelClass = v.union(v.literal("einfach"), v.literal("mittel"), v.literal("gut"), v.literal("sehr_gut"));
+const microLocationSource = v.union(v.literal("default"), v.literal("manual"), v.literal("auto"));
+const populationClass = v.union(
+  v.literal("metropole"),
+  v.literal("grossstadt"),
+  v.literal("mittelstadt"),
+  v.literal("kleinstadt"),
+  v.literal("dorf"),
+  v.literal("unknown"),
+);
+const microLocationBreakdown = v.object({
+  scoreOepnv: v.float64(),
+  scoreEinkauf: v.float64(),
+  scoreBildung: v.float64(),
+  scoreFreizeit: v.float64(),
+  gesamtScore: v.float64(),
+  kurzbegruendung: v.string(),
+});
 
 export const propertyFields = {
   userId: v.string(),
@@ -46,6 +63,11 @@ export const propertyFields = {
   propertyType: v.optional(propertyType),
   regionKey: v.optional(v.string()),
   microLocationScore: v.optional(v.float64()),
+  microLocationSource: v.optional(microLocationSource),
+  microLocationUpdatedAt: v.optional(v.string()),
+  microLocationConfidence: v.optional(v.float64()),
+  microLocationBreakdown: v.optional(microLocationBreakdown),
+  microLocationLastRunId: v.optional(v.id("microLocationRuns")),
   livingArea: v.float64(),
   landArea: v.optional(v.float64()),
   parkingSpaces: v.number(),
@@ -258,6 +280,64 @@ export default defineSchema({
   })
     .index("by_user", ["userId"])
     .index("by_property", ["propertyId"]),
+  microLocationRuns: defineTable({
+    userId: v.string(),
+    propertyId: v.id("properties"),
+    runAt: v.string(),
+    status: v.union(v.literal("success"), v.literal("error")),
+    inputSnapshot: v.object({
+      address: v.string(),
+      lat: v.optional(v.float64()),
+      lon: v.optional(v.float64()),
+      radiusPrimary: v.float64(),
+      radiusSecondary: v.float64(),
+      countryCode: v.string(),
+    }),
+    dataSnapshot: v.optional(
+      v.object({
+        populationValue: v.optional(v.float64()),
+        populationClass,
+        poiSummary: v.object({
+          supermarketsCount: v.float64(),
+          nearestSupermarketMeters: v.optional(v.float64()),
+          transitCount: v.float64(),
+          nearestTransitMeters: v.optional(v.float64()),
+          schoolsCount: v.float64(),
+          nearestSchoolMeters: v.optional(v.float64()),
+          parksCount: v.float64(),
+          nearestParkMeters: v.optional(v.float64()),
+        }),
+        sourceMeta: v.object({
+          geocodeProvider: v.string(),
+          poiProvider: v.string(),
+          populationSource: v.string(),
+        }),
+      }),
+    ),
+    llmOutput: v.optional(v.string()),
+    result: v.optional(
+      v.object({
+        scoreOepnv: v.float64(),
+        scoreEinkauf: v.float64(),
+        scoreBildung: v.float64(),
+        scoreFreizeit: v.float64(),
+        gesamtScore: v.float64(),
+        kurzbegruendung: v.string(),
+        confidence: v.float64(),
+      }),
+    ),
+    errorMessage: v.optional(v.string()),
+    providerMeta: v.optional(
+      v.object({
+        fastApiUrl: v.string(),
+        model: v.optional(v.string()),
+      }),
+    ),
+    durationMs: v.optional(v.float64()),
+  })
+    .index("by_user", ["userId"])
+    .index("by_property", ["propertyId"])
+    .index("by_property_run_at", ["propertyId", "runAt"]),
   regulatoryParameterSets: defineTable({
     country: v.string(),
     regionKey: v.string(),

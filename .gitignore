@@ -38,3 +38,8 @@ test-results/
 # local research assets
 geoapi.json
 GENESIS-Webservices_Einfuehrung.pdf
+
+# python artifacts
+__pycache__/
+*.pyc
+backend/.venv/

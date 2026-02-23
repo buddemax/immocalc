@@ -8,7 +8,9 @@ export type HelpKey =
   | "valuation_band"
   | "confidence"
   | "scenario"
-  | "net_equity";
+  | "net_equity"
+  | "micro_location_auto"
+  | "micro_location_source";
 
 export interface HelpDefinition {
   title: string;
@@ -55,5 +57,13 @@ export const HELP_TEXTS: Record<HelpKey, HelpDefinition> = {
   net_equity: {
     title: "Nettovermögen",
     text: "Das Nettovermögen ist der Immobilienwert minus verbleibende Schulden. Es zeigt, wie viel Substanz du bis zu einem bestimmten Jahr aufgebaut hast.",
+  },
+  micro_location_auto: {
+    title: "Automatische Mikrolage",
+    text: "Die Bewertung nutzt Adresse, Entfernungen und Umgebungsdaten, um einen objektiven Score zwischen 1 und 10 zu berechnen.",
+  },
+  micro_location_source: {
+    title: "Score-Quelle",
+    text: "Die Quelle zeigt, ob der Wert automatisch ermittelt, manuell gesetzt oder als Standard übernommen wurde.",
   },
 };

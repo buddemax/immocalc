@@ -17,6 +17,8 @@ import type * as geoCache from "../geoCache.js";
 import type * as householdBudgets from "../householdBudgets.js";
 import type * as kpiThresholds from "../kpiThresholds.js";
 import type * as marketData from "../marketData.js";
+import type * as microlocation from "../microlocation.js";
+import type * as microlocationRuns from "../microlocationRuns.js";
 import type * as plan from "../plan.js";
 import type * as properties from "../properties.js";
 import type * as regulatoryParameterSets from "../regulatoryParameterSets.js";
@@ -39,6 +41,8 @@ declare const fullApi: ApiFromModules<{
   householdBudgets: typeof householdBudgets;
   kpiThresholds: typeof kpiThresholds;
   marketData: typeof marketData;
+  microlocation: typeof microlocation;
+  microlocationRuns: typeof microlocationRuns;
   plan: typeof plan;
   properties: typeof properties;
   regulatoryParameterSets: typeof regulatoryParameterSets;

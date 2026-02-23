@@ -13,7 +13,8 @@ export type Feature =
   | "market_data_import"
   | "scenario_analysis"
   | "valuation_report"
-  | "geo_boris_v1";
+  | "geo_boris_v1"
+  | "micro_location_auto_v1";
 
 const PRO_ONLY: Feature[] = [
   "second_loan",
@@ -29,6 +30,7 @@ const PRO_ONLY: Feature[] = [
   "scenario_analysis",
   "valuation_report",
   "geo_boris_v1",
+  "micro_location_auto_v1",
 ];
 
 export function getPlanTier(identity: Record<string, unknown>): PlanTier {

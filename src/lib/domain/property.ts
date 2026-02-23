@@ -20,6 +20,15 @@ export interface SpecialRepayment {
   amount: number;
 }
 
+export interface MicroLocationBreakdown {
+  scoreOepnv: number;
+  scoreEinkauf: number;
+  scoreBildung: number;
+  scoreFreizeit: number;
+  gesamtScore: number;
+  kurzbegruendung: string;
+}
+
 export interface PropertyInput {
   userId?: string;
   address: string;
@@ -28,6 +37,11 @@ export interface PropertyInput {
   propertyType: "apartment" | "multi_family" | "single_family";
   regionKey: string;
   microLocationScore: number;
+  microLocationSource: "default" | "manual" | "auto";
+  microLocationUpdatedAt: string;
+  microLocationConfidence: number;
+  microLocationBreakdown?: MicroLocationBreakdown;
+  microLocationLastRunId?: string;
   livingArea: number;
   landArea: number;
   parkingSpaces: number;
@@ -115,6 +129,11 @@ export const DEFAULT_PROPERTY: PropertyInput = {
   propertyType: "apartment",
   regionKey: "DE-BE",
   microLocationScore: 0.65,
+  microLocationSource: "default",
+  microLocationUpdatedAt: "",
+  microLocationConfidence: 0,
+  microLocationBreakdown: undefined,
+  microLocationLastRunId: undefined,
   livingArea: 60,
   landArea: 0,
   parkingSpaces: 0,
@@ -202,6 +221,11 @@ export const PROPERTY_FIELD_KEYS = [
   "propertyType",
   "regionKey",
   "microLocationScore",
+  "microLocationSource",
+  "microLocationUpdatedAt",
+  "microLocationConfidence",
+  "microLocationBreakdown",
+  "microLocationLastRunId",
   "livingArea",
   "landArea",
   "parkingSpaces",
