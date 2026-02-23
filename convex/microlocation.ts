@@ -116,6 +116,9 @@ function toUserFacingErrorMessage(rawMessage: string): string {
   if (message.includes("adresse fehlt")) {
     return "Bitte zuerst eine gültige Adresse oder Koordinate setzen.";
   }
+  if (message.includes("aborterror") || message.includes("aborted")) {
+    return "Mikrolage-Bewertung hat zu lange gedauert (Timeout). Bitte erneut versuchen.";
+  }
   return `Bewertung konnte nicht durchgeführt werden: ${rawMessage}`;
 }
 
@@ -173,7 +176,7 @@ export const runAutoScore = action({
       }
 
       const controller = new AbortController();
-      const timeout = setTimeout(() => controller.abort(), 20000);
+      const timeout = setTimeout(() => controller.abort(), 120_000);
       const response = await (async () => {
         try {
           return await fetch(`${fastApiBaseUrl.replace(/\/$/, "")}${normalizedEvaluatePath}`, {
