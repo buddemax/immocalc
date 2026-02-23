@@ -18,7 +18,7 @@ pip install -r requirements.txt
 ```bash
 export MICROLOCATION_SERVICE_TOKEN=change-me
 export GEMINI_API_KEY=...
-export GEMINI_MODEL=gemini-1.5-flash
+export GEMINI_MODEL=gemini-2.5-flash
 export GEO_USER_AGENT='immocal-microlocation/1.0 (geo@example.com)'
 ```
 
@@ -44,7 +44,7 @@ Dieses Backend wird als separates Vercel-Projekt mit Root-Directory `backend` de
 3. Environment Variables setzen:
    - `MICROLOCATION_SERVICE_TOKEN`
    - `GEMINI_API_KEY`
-   - `GEMINI_MODEL` (optional, default `gemini-1.5-flash`)
+   - `GEMINI_MODEL` (optional, default `gemini-2.5-flash`)
    - `GEO_USER_AGENT`
 4. Deploy auslösen.
 
