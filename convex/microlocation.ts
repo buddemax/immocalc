@@ -99,6 +99,26 @@ function parseResult(payload: unknown): MicroLocationEvaluateResult {
   };
 }
 
+function toUserFacingErrorMessage(rawMessage: string): string {
+  const message = rawMessage.toLowerCase();
+  if (message.includes("not configured") || message.includes("nicht konfiguriert")) {
+    return "Mikrolage-Service ist nicht konfiguriert. Bitte URL und Service-Token prüfen.";
+  }
+  if (message.includes("429")) {
+    return "Mikrolage-Service ist aktuell rate-limitiert. Bitte in 1-2 Minuten erneut versuchen.";
+  }
+  if (message.includes("gemini_api_key")) {
+    return "Gemini API Key fehlt im Backend. Bitte GEMINI_API_KEY in Vercel setzen.";
+  }
+  if (message.includes("missing bearer token") || message.includes("invalid bearer token")) {
+    return "Backend-Authentifizierung fehlgeschlagen. Bitte MICROLOCATION_SERVICE_TOKEN in Convex und Vercel angleichen.";
+  }
+  if (message.includes("adresse fehlt")) {
+    return "Bitte zuerst eine gültige Adresse oder Koordinate setzen.";
+  }
+  return `Bewertung konnte nicht durchgeführt werden: ${rawMessage}`;
+}
+
 export const runAutoScore = action({
   args: {
     propertyId: v.id("properties"),
@@ -253,7 +273,7 @@ export const runAutoScore = action({
         },
         durationMs,
       } as never);
-      throw new Error("Bewertung konnte nicht durchgeführt werden. Du kannst mit dem Default-Wert weiterrechnen oder manuell setzen.");
+      throw new Error(toUserFacingErrorMessage(message));
     }
   },
 });

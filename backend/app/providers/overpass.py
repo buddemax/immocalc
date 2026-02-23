@@ -3,7 +3,13 @@ from typing import Optional
 
 import httpx
 
-OVERPASS_URL = 'https://overpass-api.de/api/interpreter'
+from app.config import settings
+
+OVERPASS_URLS = [
+    "https://overpass-api.de/api/interpreter",
+    "https://lz4.overpass-api.de/api/interpreter",
+    "https://overpass.kumi.systems/api/interpreter",
+]
 
 
 def _distance_meters(lat1: float, lon1: float, lat2: float, lon2: float) -> float:
@@ -29,15 +35,38 @@ def _parse_elements(elements: list[dict], center_lat: float, center_lon: float) 
 
 
 async def _query_overpass(query: str) -> list[dict]:
-    async with httpx.AsyncClient(timeout=20.0) as client:
-        resp = await client.post(
-            OVERPASS_URL,
-            headers={'Content-Type': 'application/x-www-form-urlencoded; charset=UTF-8'},
-            data={'data': query},
-        )
-        resp.raise_for_status()
-        body = resp.json()
-    return body.get('elements') or []
+    errors: list[str] = []
+    headers = {
+        "Content-Type": "application/x-www-form-urlencoded; charset=UTF-8",
+        "User-Agent": settings.geo_user_agent,
+    }
+
+    for endpoint in OVERPASS_URLS:
+        delay = 0.7
+        for attempt in range(1, 3):
+            try:
+                async with httpx.AsyncClient(timeout=20.0) as client:
+                    resp = await client.post(endpoint, headers=headers, data={"data": query})
+                if resp.status_code == 429:
+                    errors.append(f"{endpoint} attempt {attempt}: 429")
+                    await asyncio.sleep(delay)
+                    delay *= 2
+                    continue
+                if resp.status_code >= 500:
+                    errors.append(f"{endpoint} attempt {attempt}: {resp.status_code}")
+                    await asyncio.sleep(delay)
+                    delay *= 2
+                    continue
+
+                resp.raise_for_status()
+                body = resp.json()
+                return body.get("elements") or []
+            except httpx.HTTPError as exc:
+                errors.append(f"{endpoint} attempt {attempt}: {exc}")
+                await asyncio.sleep(delay)
+                delay *= 2
+
+    raise RuntimeError(f"All Overpass providers failed: {' | '.join(errors)}")
 
 
 def _population_class(value: Optional[int]) -> str:
